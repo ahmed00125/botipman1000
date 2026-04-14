@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+
+<section class="card">
+  <h2>Optimize parameters</h2>
+  <p class="muted">Runs Optuna with CPCV-aware objective and saves the best params to <code>artifacts/best_params.json</code>. This is CPU-heavy — start small (50–100 trials) on Railway.</p>
+  <form method="post" action="/optimize" class="grid two">
+    <label>Symbol <input name="symbol" value="BTCUSDT"></label>
+    <label>Interval <input name="interval" value="5"></label>
+    <label>Days <input type="number" name="days" value="365" min="30"></label>
+    <label>Trials <input type="number" name="trials" value="100" min="5" max="2000"></label>
+    <div class="row full">
+      <button class="primary" {% if job and job.status == 'running' %}disabled{% endif %}>Start optimization</button>
+    </div>
+  </form>
+</section>
+
+{% include "_job.html" %}
+{% endblock %}

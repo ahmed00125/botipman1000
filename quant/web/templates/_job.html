@@ -1,0 +1,27 @@
+{% if job %}
+<section class="card">
+  <h2>Last run · <span class="{{ job.status }}">{{ job.status }}</span></h2>
+  <dl class="kv">
+    <dt>Started</dt><dd>{{ job.started_at }}</dd>
+    <dt>Finished</dt><dd>{{ job.finished_at or '—' }}</dd>
+    {% if job.error %}<dt>Error</dt><dd class="err">{{ job.error }}</dd>{% endif %}
+  </dl>
+  {% if job.result %}
+  <h3>Result</h3>
+  <pre class="mono">{{ job.result | tojson(indent=2) }}</pre>
+  {% endif %}
+  {% if job.log %}
+  <h3>Log</h3>
+  <pre class="mono small">{% for line in job.log %}{{ line }}
+{% endfor %}</pre>
+  {% endif %}
+</section>
+<script>
+(function() {
+  var status = "{{ job.status }}";
+  if (status === "running") {
+    setTimeout(function() { window.location.reload(); }, 3000);
+  }
+})();
+</script>
+{% endif %}

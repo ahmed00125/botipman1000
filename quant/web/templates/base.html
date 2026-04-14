@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }} — botipman1000</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">◆</span>
+      <strong>botipman1000</strong>
+      <span class="tag">{{ "LIVE" if status.mode == "live" else ("SHADOW" if status.mode == "shadow" else "IDLE") }}</span>
+    </div>
+    <nav class="nav">
+      {% for item in nav %}
+      <a href="{{ item.href }}" class="{% if item.active %}active{% endif %}">{{ item.label }}</a>
+      {% endfor %}
+    </nav>
+    <div class="state">
+      <span class="dot {{ 'ok' if status.running else 'off' }}"></span>
+      {{ "running" if status.running else "stopped" }}
+      {% if status.last_tick %}<span class="muted">· tick {{ status.last_tick }}</span>{% endif %}
+    </div>
+  </header>
+
+  <main class="container">
+    <h1>{{ title }}</h1>
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="foot">
+    <span class="muted">quant-grade bybit bot · read the code before running live</span>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+
+<section class="card">
+  <h2>Logs</h2>
+  {% if files %}
+  <p class="muted">
+    Showing tail of <code>{{ picked }}</code> — {{ files | length }} log file{% if files|length != 1 %}s{% endif %} present.
+    <a href="/logs?tail=200">200</a> · <a href="/logs?tail=500">500</a> · <a href="/logs?tail=2000">2000</a> lines
+  </p>
+  <pre class="mono small log">{{ content }}</pre>
+  {% else %}
+  <p class="muted">No log files in <code>logs/</code> yet.</p>
+  {% endif %}
+</section>
+<script>setTimeout(function(){ window.location.reload(); }, 10000);</script>
+{% endblock %}

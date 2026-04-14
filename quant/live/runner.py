@@ -9,6 +9,7 @@ safety checks — max position, risk halt, drift monitor. Requires --live flag.
 from __future__ import annotations
 
 import json
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -67,6 +68,48 @@ class _BaseRunner:
                 logger.warning(f"meta model load failed: {exc}")
         self.drift: dict[str, DriftMonitor] = {}
         self.shadow_trades: list[dict] = []
+        # Threading + status
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self.last_signal: dict[str, dict] = {}
+        self.last_error: str | None = None
+        self.last_tick: datetime | None = None
+
+    # --------------------------------------------------------- thread API
+    @property
+    def running(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
+    def start(self) -> bool:
+        if self.running:
+            return False
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._run_background, daemon=True)
+        self._thread.start()
+        return True
+
+    def stop(self, timeout: float = 5.0) -> bool:
+        if not self.running:
+            return False
+        self._stop.set()
+        self._thread.join(timeout=timeout)
+        return True
+
+    def _run_background(self) -> None:
+        self._background_label()
+        while not self._stop.is_set():
+            try:
+                self.run_once()
+                self.last_tick = datetime.utcnow()
+                self.last_error = None
+            except Exception as exc:
+                self.last_error = repr(exc)
+                logger.exception(f"runner step failed: {exc}")
+            self._stop.wait(self.cfg.poll_seconds)
+        logger.info("runner thread exiting cleanly")
+
+    def _background_label(self) -> None:
+        logger.info(f"runner thread starting: {self.__class__.__name__}")
 
     def _load_params(self) -> tuple[FeatureParams, PrimaryParams]:
         path = Path(self.cfg.params_path)
@@ -115,7 +158,7 @@ class _BaseRunner:
             logger.warning(f"{symbol} drift detected: {dr}")
             return {"symbol": symbol, "action": "halt-drift", "ts": last_ts}
 
-        return {
+        sig = {
             "symbol": symbol,
             "ts": last_ts,
             "side": side,
@@ -125,6 +168,8 @@ class _BaseRunner:
             "atr": float(feats["atr_14"].iloc[-1]),
             "vol_64": float(feats["vol_64"].iloc[-1]),
         }
+        self.last_signal[symbol] = sig
+        return sig
 
 
 class ShadowRunner(_BaseRunner):

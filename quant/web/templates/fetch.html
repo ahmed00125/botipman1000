@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+
+<section class="card">
+  <h2>Fetch historical data</h2>
+  <p class="muted">Downloads klines from Bybit and writes them to the parquet cache under <code>data/raw/</code>.</p>
+  <form method="post" action="/fetch" class="grid two">
+    <label>Symbol <input name="symbol" value="BTCUSDT"></label>
+    <label>Interval <input name="interval" value="5"></label>
+    <label>Days <input type="number" name="days" value="365" min="7"></label>
+    <div class="row full">
+      <button class="primary" {% if job and job.status == 'running' %}disabled{% endif %}>Fetch</button>
+    </div>
+  </form>
+</section>
+
+{% include "_job.html" %}
+{% endblock %}

@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block content %}
+
+<section class="grid two">
+  <div class="card">
+    <h2>Runner</h2>
+    <dl class="kv">
+      <dt>Mode</dt><dd>{{ status.mode or "—" }}</dd>
+      <dt>Status</dt><dd>{{ "running" if status.running else "stopped" }}</dd>
+      <dt>Symbols</dt><dd>{{ status.symbols | join(", ") or "—" }}</dd>
+      <dt>Interval</dt><dd>{{ status.interval or "—" }}m</dd>
+      <dt>Poll</dt><dd>{{ status.poll_seconds or "—" }}s</dd>
+      <dt>Last tick</dt><dd>{{ status.last_tick or "—" }}</dd>
+      <dt>Last error</dt><dd class="err">{{ status.last_error or "—" }}</dd>
+      <dt>Shadow trades</dt><dd>{{ status.shadow_trades }}</dd>
+    </dl>
+    <div class="row">
+      <form method="post" action="/runner/stop">
+        <button class="danger" {% if not status.running %}disabled{% endif %}>Stop</button>
+      </form>
+      <form method="post" action="/runner/reset-halt">
+        <button>Reset halt</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Risk state</h2>
+    {% if status.risk_state %}
+    <dl class="kv">
+      <dt>Equity</dt><dd>{{ status.risk_state.equity }}</dd>
+      <dt>Peak</dt><dd>{{ status.risk_state.peak_equity }}</dd>
+      <dt>Daily PnL</dt><dd>{{ status.risk_state.daily_pnl }}</dd>
+      <dt>Drawdown</dt><dd>{{ '%.2f%%' % (status.risk_state.drawdown * 100) }}</dd>
+      <dt>Size mult</dt><dd>{{ status.risk_state.size_multiplier }}</dd>
+      <dt>Open positions</dt><dd>{{ status.risk_state.open_positions }}</dd>
+      <dt>Halted</dt><dd class="{{ 'err' if status.risk_state.halted else '' }}">{{ status.risk_state.halted }}</dd>
+      {% if status.risk_state.halted %}
+      <dt>Reason</dt><dd class="err">{{ status.risk_state.halt_reason }}</dd>
+      {% endif %}
+    </dl>
+    {% else %}
+    <p class="muted">No runner started yet.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card">
+  <h2>Start runner</h2>
+  {% if not best_params_exists %}<p class="warn">⚠ <code>artifacts/best_params.json</code> not found — runner will use defaults. Run /optimize first.</p>{% endif %}
+  {% if not meta_model_exists %}<p class="warn">⚠ <code>artifacts/meta_model.joblib</code> not found — meta-filter disabled.</p>{% endif %}
+  <form method="post" action="/runner/start" class="grid two">
+    <label>Mode
+      <select name="mode">
+        <option value="shadow" selected>shadow (paper)</option>
+        <option value="live">live (real funds)</option>
+      </select>
+    </label>
+    <label>Symbols
+      <input name="symbols" value="{{ status.symbols | join(',') }}" placeholder="BTCUSDT,ETHUSDT">
+    </label>
+    <label>Interval
+      <input name="interval" value="{{ status.interval or '5' }}">
+    </label>
+    <label>Poll seconds
+      <input type="number" name="poll_seconds" value="{{ status.poll_seconds or 30 }}" min="5">
+    </label>
+    <label>Min meta prob
+      <input type="number" step="0.01" name="min_meta_prob" value="0.55" min="0" max="1">
+    </label>
+    <label>Starting equity
+      <input type="number" step="0.01" name="starting_equity" value="10000">
+    </label>
+    <div class="row full">
+      <button class="primary" {% if status.running %}disabled{% endif %}>Start</button>
+      <small class="muted">Live mode requires <code>CONFIRM_LIVE=yes</code> and Bybit API keys in <code>.env</code>.</small>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Last signals</h2>
+  {% if status.last_signal %}
+  <table>
+    <thead><tr><th>symbol</th><th>ts</th><th>side</th><th>score</th><th>meta_prob</th><th>price</th><th>atr</th></tr></thead>
+    <tbody>
+    {% for sym, sig in status.last_signal.items() %}
+      <tr>
+        <td>{{ sym }}</td>
+        <td>{{ sig.ts }}</td>
+        <td class="{{ 'long' if sig.side and sig.side|int > 0 else ('short' if sig.side and sig.side|int < 0 else '') }}">{{ sig.side }}</td>
+        <td>{{ '%.3f' % sig.score if sig.score is not none else '—' }}</td>
+        <td>{{ '%.3f' % sig.meta_prob if sig.meta_prob is not none else '—' }}</td>
+        <td>{{ sig.price }}</td>
+        <td>{{ '%.4f' % sig.atr if sig.atr is not none else '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No signals yet.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Recent jobs</h2>
+  {% if jobs %}
+  <table>
+    <thead><tr><th>job</th><th>status</th><th>started</th><th>finished</th></tr></thead>
+    <tbody>
+    {% for name, j in jobs.items() %}
+      <tr>
+        <td><a href="/{{ name }}">{{ name }}</a></td>
+        <td class="{{ j.status }}">{{ j.status }}</td>
+        <td>{{ j.started_at }}</td>
+        <td>{{ j.finished_at or '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No jobs run yet.</p>
+  {% endif %}
+</section>
+
+<script>
+// Light auto-refresh of status JSON → no dependencies
+setInterval(async () => {
+  try {
+    const r = await fetch('/status.json');
+    if (!r.ok) return;
+    const j = await r.json();
+    const tick = j.status.last_tick || '—';
+    document.querySelectorAll('[data-tick]').forEach(el => el.textContent = tick);
+  } catch(e) {}
+}, 5000);
+</script>
+{% endblock %}

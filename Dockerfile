@@ -24,9 +24,12 @@ COPY . .
 # Directories for persistent volumes on Railway
 RUN mkdir -p /app/data/raw /app/data/processed /app/artifacts /app/logs
 
-ENV RUN_MODE=shadow \
+ENV RUN_MODE=web \
+    PORT=8000 \
     POLL_SECONDS=30 \
     LOG_LEVEL=INFO
+
+EXPOSE 8000
 
 # Default command uses the unified entrypoint, Railway can override via CMD.
 CMD ["python", "-m", "quant.entrypoint"]

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+
+<section class="card">
+  <h2>Train meta-labeler</h2>
+  <p class="muted">Trains the LightGBM meta-classifier on triple-barrier labels generated from the primary model + best params. Saves to <code>artifacts/meta_model.joblib</code>.</p>
+  <form method="post" action="/train-meta" class="grid two">
+    <label>Symbol <input name="symbol" value="BTCUSDT"></label>
+    <label>Interval <input name="interval" value="5"></label>
+    <label>Days <input type="number" name="days" value="365" min="30"></label>
+    <div class="row full">
+      <button class="primary" {% if job and job.status == 'running' %}disabled{% endif %}>Train</button>
+    </div>
+  </form>
+</section>
+
+{% include "_job.html" %}
+{% endblock %}

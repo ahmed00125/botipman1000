@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+
+<section class="card">
+  <h2>Best params</h2>
+  {% if request.query_params.get('saved') %}<p class="ok">Saved.</p>{% endif %}
+  <p class="muted">File: <code>{{ path }}</code> {% if not exists %}<span class="warn">(does not exist yet)</span>{% endif %}</p>
+  <form method="post" action="/params">
+    <textarea name="content" rows="28" class="mono">{{ text }}</textarea>
+    <div class="row">
+      <button class="primary">Save</button>
+      <small class="muted">Must be valid JSON. The runner reloads it on next start.</small>
+    </div>
+  </form>
+</section>
+{% endblock %}

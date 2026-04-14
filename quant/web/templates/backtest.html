@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+
+<section class="card">
+  <h2>Run backtest</h2>
+  <p class="muted">Loads cached klines, builds features, runs the event-driven engine with the current best params and meta model (if present).</p>
+  <form method="post" action="/backtest" class="grid two">
+    <label>Symbol <input name="symbol" value="BTCUSDT"></label>
+    <label>Interval <input name="interval" value="5"></label>
+    <label>Days <input type="number" name="days" value="365" min="30"></label>
+    <div class="row full">
+      <button class="primary" {% if job and job.status == 'running' %}disabled{% endif %}>Run backtest</button>
+    </div>
+  </form>
+</section>
+
+{% include "_job.html" %}
+{% endblock %}

@@ -2,7 +2,8 @@
 
 Reads ``RUN_MODE`` from env and dispatches to the appropriate subsystem:
 
-    RUN_MODE=shadow   → paper trading loop (default, safe)
+    RUN_MODE=web      → FastAPI control panel (default)
+    RUN_MODE=shadow   → paper trading loop
     RUN_MODE=live     → real orders (requires CONFIRM_LIVE=yes)
     RUN_MODE=optimize → one-shot parameter search, exits when done
     RUN_MODE=backtest → one-shot backtest with loaded params, exits
@@ -17,6 +18,10 @@ Additional env:
     META_PATH          meta model path (default artifacts/meta_model.joblib)
     POLL_SECONDS       shadow/live loop interval (default 30)
     CONFIRM_LIVE       must be "yes" to run RUN_MODE=live
+    PORT               port for RUN_MODE=web (default 8000, Railway sets this)
+    WEB_HOST           bind host for RUN_MODE=web (default 0.0.0.0)
+    WEB_PASSWORD       enable HTTP basic auth on the panel
+    WEB_USERNAME       basic-auth user (default admin)
 """
 from __future__ import annotations
 
@@ -156,18 +161,31 @@ def _run_live() -> int:
     return 0
 
 
+def _run_web() -> int:
+    import uvicorn
+
+    host = os.getenv("WEB_HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "8000"))
+    logger.info(f"web control panel starting on {host}:{port}")
+    if not os.getenv("WEB_PASSWORD"):
+        logger.warning("WEB_PASSWORD is not set — the panel is UNAUTHENTICATED")
+    uvicorn.run("quant.web.app:app", host=host, port=port, log_level=settings.log_level.lower())
+    return 0
+
+
 MODES = {
     "fetch": _run_fetch,
     "optimize": _run_optimize,
     "backtest": _run_backtest,
     "shadow": _run_shadow,
     "live": _run_live,
+    "web": _run_web,
 }
 
 
 def main() -> int:
     setup_logging()
-    mode = os.getenv("RUN_MODE", "shadow").strip().lower()
+    mode = os.getenv("RUN_MODE", "web").strip().lower()
     if mode not in MODES:
         logger.error(f"unknown RUN_MODE={mode}. valid: {list(MODES)}")
         return 2

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+
+<section class="card">
+  <h2>Shadow trades · {{ trades | length }}</h2>
+  {% if trades %}
+  <table>
+    <thead>
+      <tr>
+        <th>ts</th><th>symbol</th><th>side</th><th>score</th><th>meta_prob</th><th>price</th><th>action</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for t in trades | reverse %}
+      <tr>
+        <td>{{ t.ts }}</td>
+        <td>{{ t.symbol }}</td>
+        <td class="{{ 'long' if t.side and t.side|int > 0 else ('short' if t.side and t.side|int < 0 else '') }}">{{ t.side }}</td>
+        <td>{{ '%.3f' % t.score if t.score is not none else '—' }}</td>
+        <td>{{ '%.3f' % t.meta_prob if t.meta_prob is not none else '—' }}</td>
+        <td>{{ t.price }}</td>
+        <td>{{ t.action or '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No shadow trades yet — start the runner from the dashboard.</p>
+  {% endif %}
+</section>
+{% endblock %}

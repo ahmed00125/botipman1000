@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+
+<section class="card">
+  <h2>Artifacts</h2>
+  {% if entries %}
+  <table>
+    <thead><tr><th>name</th><th>size</th><th>modified</th><th></th></tr></thead>
+    <tbody>
+    {% for f in entries %}
+      <tr>
+        <td><code>{{ f.name }}</code></td>
+        <td>{{ f.size }} B</td>
+        <td>{{ f.mtime }}</td>
+        <td><a href="/artifacts/{{ f.name }}">download</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No artifacts yet — run optimize/backtest/train-meta to populate.</p>
+  {% endif %}
+</section>
+{% endblock %}

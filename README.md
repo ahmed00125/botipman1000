@@ -128,11 +128,42 @@ Railway builds the Dockerfile. The container runs `python -m quant.entrypoint`
 which dispatches based on `RUN_MODE`.
 
 ### 4. Runbook
-- **Start in shadow** (`RUN_MODE=shadow`) and watch logs for ≥ 1 week
+- **Easiest path**: deploy with `RUN_MODE=web` (the Docker default) and drive
+  everything from the browser control panel — Fetch → Optimize → Train Meta →
+  Backtest → Start runner. See *Web control panel* below.
+- Or run headless with `RUN_MODE=shadow` and watch logs for ≥ 1 week
 - Re-run `RUN_MODE=optimize` periodically (e.g. weekly) to refresh params
 - Switch to `RUN_MODE=live` **only** after setting `CONFIRM_LIVE=yes` AND
   testnet paper-trading looks sane
 - Flip `BYBIT_TESTNET=false` only when you are sure
+
+## Web control panel
+
+Set `RUN_MODE=web` (the Docker default) and the container starts a FastAPI +
+Jinja control panel on `$PORT` (Railway sets this automatically; defaults to
+`8000` locally). It lets you:
+
+- **Dashboard** — runner status, last signals per symbol, risk state, start /
+  stop the shadow or live runner, reset risk halts
+- **Config** — read & edit `.env` from the browser (secrets masked, leave blank
+  to keep current value)
+- **Params** — read & edit `artifacts/best_params.json` directly
+- **Fetch / Optimize / Train Meta / Backtest** — kick off long-running jobs in
+  background threads and watch their progress + results
+- **Trades** — paper-trade ledger from the active shadow runner
+- **Logs** — tail the latest log file
+- **Artifacts** — list & download files under `artifacts/`
+
+### Auth
+Set `WEB_PASSWORD` (and optionally `WEB_USERNAME`, default `admin`) before
+exposing the panel to the internet. If `WEB_PASSWORD` is unset the panel runs
+unauthenticated and a warning is logged on startup — useful for local dev only.
+
+### Run locally
+```bash
+pip install -r requirements.txt
+WEB_PASSWORD=changeme python -m quant.entrypoint  # → http://localhost:8000
+```
 
 ## Env-var driven entrypoint (same for Docker / Railway / Fly / k8s)
 
