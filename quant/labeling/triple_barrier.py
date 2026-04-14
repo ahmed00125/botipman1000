@@ -9,16 +9,27 @@ The label is the sign of the first barrier hit (or 0 if vertical hit first).
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
+import pandas as pd  # noqa: F401
 
 
 def get_daily_vol(close: pd.Series, span: int = 100) -> pd.Series:
-    """Exponentially-weighted daily return std used as target volatility."""
-    idx = close.index.searchsorted(close.index - pd.Timedelta(days=1))
-    idx = idx[idx > 0]
-    prev = pd.Series(close.index[idx - 1], index=close.index[close.shape[0] - len(idx) :])
-    ret = (close.loc[prev.index] / close.loc[prev.values].values - 1).rename("dret")
-    return ret.ewm(span=span).std().rename("target_vol")
+    """Exponentially-weighted return std used as target volatility.
+
+    Uses the AFML pattern: map each bar to the bar closest to 1 day earlier,
+    compute the return across that window, then EWMA its std.
+    """
+    idx = close.index
+    prior = idx.searchsorted(idx - pd.Timedelta(days=1))
+    prior = prior[prior > 0]
+    if len(prior) == 0:
+        ret = np.log(close).diff()
+    else:
+        current_idx = idx[len(idx) - len(prior) :]
+        ret = pd.Series(
+            close.loc[current_idx].values / close.iloc[prior - 1].values - 1.0,
+            index=current_idx,
+        )
+    return ret.ewm(span=span, min_periods=min(span, 20)).std().rename("target_vol")
 
 
 def get_vertical_barriers(
@@ -26,13 +37,15 @@ def get_vertical_barriers(
 ) -> pd.Series:
     """Vertical barrier N bars after each event."""
     idx = close.index
-    t1 = pd.Series(pd.NaT, index=events)
+    out = []
     for t in events:
         loc = idx.searchsorted(t)
         tgt = loc + num_bars
         if tgt < len(idx):
-            t1.loc[t] = idx[tgt]
-    return t1
+            out.append(idx[tgt])
+        else:
+            out.append(idx[-1])
+    return pd.Series(pd.DatetimeIndex(out, tz=idx.tz), index=events)
 
 
 def apply_triple_barrier(

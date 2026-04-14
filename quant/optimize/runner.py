@@ -80,6 +80,8 @@ class OptunaRunner:
 
     # --------------------------------------------------------- objective
     def _objective(self, trial) -> float:
+        from quant.labeling.triple_barrier import get_vertical_barriers
+
         feat_params = self._suggest_feature_params(trial)
         prim_params = self._suggest_primary_params(trial)
         bt_cfg = self._suggest_backtest_cfg(trial)
@@ -93,15 +95,18 @@ class OptunaRunner:
         side = prim["primary_side"]
         close = self.df["close"].loc[feats.index]
 
-        # Event sampling inside optimization uses CUSUM (adaptive)
         events = cusum_events(close, h_mult=2.0)
         if len(events) < 50:
             return -5.0
 
-        # CPCV-based evaluation
+        # Approximate event-end (vertical barrier) for purging
+        event_ends = get_vertical_barriers(
+            events, close, num_bars=bt_cfg.max_hold_bars
+        )
+        event_ends = event_ends.reindex(feats.index).ffill()
+
         engine = EventBacktester(bt_cfg)
         idx = feats.index
-        event_ends = pd.Series(idx, index=idx)  # crude: will be replaced by t1 inside engine
         test_sharpes = []
         for train_idx, test_idx in self.cpcv.split(idx, event_ends):
             test_times = idx[test_idx]

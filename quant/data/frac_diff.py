@@ -16,7 +16,9 @@ def _get_weights_ffd(d: float, thres: float = 1e-5, max_size: int = 10_000) -> n
         if abs(w_) < thres:
             break
         w.append(w_)
-    return np.array(w[::-1]).reshape(-1, 1)
+    # Return a 1-D array ordered from oldest → newest so the dot product with
+    # a rolling window is straightforward.
+    return np.array(w[::-1], dtype=float)
 
 
 def frac_diff_ffd(series: pd.Series, d: float, thres: float = 1e-5) -> pd.Series:
@@ -29,7 +31,7 @@ def frac_diff_ffd(series: pd.Series, d: float, thres: float = 1e-5) -> pd.Series
         window = values[i - width : i + 1]
         if np.isnan(window).any():
             continue
-        out[i] = float(np.dot(w.T, window)[0, 0])
+        out[i] = float(np.dot(w, window))
     return pd.Series(out, index=series.index, name=f"ffd_{d:.2f}")
 
 

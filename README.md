@@ -51,7 +51,7 @@ quant/
 main.py              typer CLI
 ```
 
-## Install
+## Install (local)
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
@@ -59,7 +59,7 @@ pip install -r requirements.txt
 cp .env.example .env    # edit with your Bybit keys (testnet first)
 ```
 
-## Quick start
+## Quick start (local CLI)
 
 ```bash
 # 1. fetch history
@@ -79,6 +79,68 @@ python main.py shadow --symbols BTCUSDT,ETHUSDT
 
 # 6. live (testnet by default — requires BYBIT_TESTNET=true in .env)
 python main.py live --symbols BTCUSDT --confirm --once
+```
+
+## Deploy on Railway
+
+The project ships with a `Dockerfile`, `railway.toml`, `Procfile` and a single
+unified entrypoint (`quant/entrypoint.py`) that reads `RUN_MODE` from env.
+
+### 1. Generate artifacts locally first
+Run optimization + meta-training on your laptop (fast, no Railway cost) and
+commit the resulting files so the Railway worker starts trading immediately:
+```bash
+python main.py fetch    --symbol BTCUSDT --days 365
+python main.py optimize --symbol BTCUSDT --trials 300
+python main.py train-meta --symbol BTCUSDT
+git add -f artifacts/best_params.json artifacts/meta_model.joblib
+git commit -m "chore: trained artifacts"
+```
+
+### 2. Create the Railway project
+- `railway init`, connect your GitHub repo
+- Add a **volume** mounted at `/app/data` (parquet cache) and a second at
+  `/app/artifacts` if you prefer not to commit artifacts
+- Set environment variables:
+
+| Variable           | Example                 | Notes                                   |
+| ------------------ | ----------------------- | --------------------------------------- |
+| `RUN_MODE`         | `shadow`                | `shadow` / `live` / `optimize` / `backtest` / `fetch` |
+| `BYBIT_API_KEY`    | `...`                   | Bybit v5 key                            |
+| `BYBIT_API_SECRET` | `...`                   | Bybit v5 secret                         |
+| `BYBIT_TESTNET`    | `true`                  | Flip to `false` only after validation   |
+| `SYMBOLS`          | `BTCUSDT,ETHUSDT`       | comma-separated                         |
+| `INTERVAL`         | `5`                     | kline minutes                           |
+| `POLL_SECONDS`     | `30`                    | loop interval                           |
+| `MAX_LEVERAGE`     | `3`                     |                                         |
+| `RISK_PER_TRADE`   | `0.01`                  |                                         |
+| `DAILY_LOSS_LIMIT` | `0.03`                  |                                         |
+| `MAX_DRAWDOWN`     | `0.15`                  |                                         |
+| `KELLY_FRACTION`   | `0.25`                  |                                         |
+| `CONFIRM_LIVE`     | unset                   | must equal `yes` to enable live orders  |
+| `LOG_LEVEL`        | `INFO`                  |                                         |
+
+### 3. Deploy
+```bash
+railway up
+```
+Railway builds the Dockerfile. The container runs `python -m quant.entrypoint`
+which dispatches based on `RUN_MODE`.
+
+### 4. Runbook
+- **Start in shadow** (`RUN_MODE=shadow`) and watch logs for ≥ 1 week
+- Re-run `RUN_MODE=optimize` periodically (e.g. weekly) to refresh params
+- Switch to `RUN_MODE=live` **only** after setting `CONFIRM_LIVE=yes` AND
+  testnet paper-trading looks sane
+- Flip `BYBIT_TESTNET=false` only when you are sure
+
+## Env-var driven entrypoint (same for Docker / Railway / Fly / k8s)
+
+```bash
+docker build -t botipman1000 .
+docker run --rm -e RUN_MODE=backtest -e SYMBOLS=BTCUSDT \
+    -v $(pwd)/data:/app/data -v $(pwd)/artifacts:/app/artifacts \
+    botipman1000
 ```
 
 ## Risk defaults
