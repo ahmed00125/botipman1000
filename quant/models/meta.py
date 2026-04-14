@@ -62,13 +62,18 @@ class MetaLabeler:
         fit_kwargs = {}
         if sample_weight is not None:
             fit_kwargs["sample_weight"] = sample_weight.loc[X.index].values
-        self.model.fit(X.values, y.values, **fit_kwargs)
+        # Pass DataFrame so LightGBM records feature names (prevents mismatch
+        # warnings at predict time).
+        self.model.fit(X, y.values, **fit_kwargs)
 
     # --------------------------------------------------------------- predict
     def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
         if self.model is None:
             raise RuntimeError("MetaLabeler not fitted")
-        return self.model.predict_proba(X[self.feature_names].values)[:, 1]
+        missing = [f for f in self.feature_names if f not in X.columns]
+        if missing:
+            raise KeyError(f"missing meta features at predict time: {missing[:5]}")
+        return self.model.predict_proba(X[self.feature_names])[:, 1]
 
     def filter_signals(
         self, side: pd.Series, X: pd.DataFrame, threshold: float | None = None

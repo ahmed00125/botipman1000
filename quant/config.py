@@ -4,13 +4,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List
 
-from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        case_sensitive=False,
     )
 
     # Bybit
@@ -19,8 +21,9 @@ class Settings(BaseSettings):
     bybit_testnet: bool = True
     category: str = "linear"
 
-    # Universe
-    symbols: List[str] = Field(default_factory=lambda: ["BTCUSDT", "ETHUSDT"])
+    # Universe — stored as a comma-separated string so env vars don't need to
+    # be JSON-encoded. Use ``settings.symbols`` (property) to get the list.
+    symbols_raw: str = "BTCUSDT,ETHUSDT"
     base_timeframe: str = "5"  # minutes for raw klines
 
     # Risk
@@ -39,19 +42,23 @@ class Settings(BaseSettings):
     # Ops
     log_level: str = "INFO"
 
-    @field_validator("symbols", mode="before")
-    @classmethod
-    def _split_symbols(cls, v):
-        if isinstance(v, str):
-            return [s.strip().upper() for s in v.split(",") if s.strip()]
-        return v
+    @property
+    def symbols(self) -> List[str]:
+        return [s.strip().upper() for s in self.symbols_raw.split(",") if s.strip()]
 
     def ensure_dirs(self) -> None:
         for p in (self.data_dir, self.artifact_dir, self.log_dir):
             p.mkdir(parents=True, exist_ok=True)
-            (self.data_dir / "raw").mkdir(exist_ok=True)
-            (self.data_dir / "processed").mkdir(exist_ok=True)
+        (self.data_dir / "raw").mkdir(exist_ok=True)
+        (self.data_dir / "processed").mkdir(exist_ok=True)
 
+
+# Pydantic-settings reads env vars by field name; alias SYMBOLS → symbols_raw
+# via environment substitution at load time.
+import os  # noqa: E402
+
+if "SYMBOLS" in os.environ and "SYMBOLS_RAW" not in os.environ:
+    os.environ["SYMBOLS_RAW"] = os.environ["SYMBOLS"]
 
 settings = Settings()
 settings.ensure_dirs()
