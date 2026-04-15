@@ -137,6 +137,7 @@ class _BaseRunner:
         last_ts = feats.index[-1]
         side = int(prim["primary_side"].iloc[-1])
         score = float(prim["primary_score"].iloc[-1])
+        mode = int(prim["primary_mode"].iloc[-1]) if "primary_mode" in prim.columns else 0
         close = float(df["close"].iloc[-1])
 
         # Meta-filter
@@ -163,6 +164,7 @@ class _BaseRunner:
             "ts": last_ts,
             "side": side,
             "score": score,
+            "mode": mode,
             "meta_prob": prob,
             "price": close,
             "atr": float(feats["atr_14"].iloc[-1]),
@@ -211,6 +213,7 @@ class LiveRunner(_BaseRunner):
         side = sig["side"]
         price = sig["price"]
         atr = sig["atr"]
+        mode = sig.get("mode", 1)
         if side == 0:
             return
         ok, reason = self.risk.can_open(symbol, side)
@@ -220,7 +223,12 @@ class LiveRunner(_BaseRunner):
 
         vol_ann = sig["vol_64"] * np.sqrt(365 * 24 * 12)
         prob = sig.get("meta_prob") or 0.55
-        wlr = 2.0  # rough from backtest PT/SL default
+        # Regime-aware risk/reward — matches the backtest engine's barriers.
+        if mode == 2:  # range-fade
+            sl_atr_mult, pt_atr_mult = 1.0, 1.5
+        else:  # trend-follow (default)
+            sl_atr_mult, pt_atr_mult = 1.5, 3.0
+        wlr = pt_atr_mult / sl_atr_mult
         qty = combined_size(
             equity=self.risk.state.equity,
             price=price,
@@ -236,8 +244,8 @@ class LiveRunner(_BaseRunner):
         if qty <= 0:
             return
 
-        sl_px = price - side * 1.5 * atr
-        tp_px = price + side * 3.0 * atr
+        sl_px = price - side * sl_atr_mult * atr
+        tp_px = price + side * pt_atr_mult * atr
         req = OrderRequest(
             symbol=symbol,
             side="Buy" if side > 0 else "Sell",

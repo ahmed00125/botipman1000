@@ -57,24 +57,39 @@ class OptunaRunner:
             zigzag_atr_mult=trial.suggest_float("zigzag_atr_mult", 1.5, 5.0),
             hawkes_decay=trial.suggest_float("hawkes_decay", 0.02, 0.3),
             frac_d=trial.suggest_float("frac_d", 0.2, 0.8),
+            adx_n=trial.suggest_int("adx_n", 10, 20),
+            rsi_n=trial.suggest_int("rsi_n", 10, 20),
+            bb_n=trial.suggest_int("bb_n", 14, 30),
+            bb_k=trial.suggest_float("bb_k", 1.8, 2.5),
+            adx_trend_th=trial.suggest_float("adx_trend_th", 18.0, 28.0),
+            adx_range_th=trial.suggest_float("adx_range_th", 12.0, 20.0),
         )
 
     def _suggest_primary_params(self, trial) -> PrimaryParams:
         return PrimaryParams(
-            w_macd=trial.suggest_float("w_macd", 0.0, 2.0),
-            w_stoch=trial.suggest_float("w_stoch", 0.0, 2.0),
-            w_donch=trial.suggest_float("w_donch", 0.0, 2.0),
-            w_fib=trial.suggest_float("w_fib", 0.0, 2.0),
-            w_ew=trial.suggest_float("w_ew", 0.0, 2.0),
-            min_abs_score=trial.suggest_float("min_abs_score", 0.15, 0.6),
+            trend_macd_min=trial.suggest_float("trend_macd_min", 0.0, 0.8),
+            trend_pullback_k=trial.suggest_float("trend_pullback_k", 0.3, 1.5),
+            trend_donch_conf=trial.suggest_float("trend_donch_conf", 0.0, 0.6),
+            trend_align_min=trial.suggest_float("trend_align_min", 0.2, 0.8),
+            range_rsi_lo=trial.suggest_float("range_rsi_lo", 22.0, 38.0),
+            range_rsi_hi=trial.suggest_float("range_rsi_hi", 62.0, 78.0),
+            range_pctb_lo=trial.suggest_float("range_pctb_lo", 0.05, 0.25),
+            range_pctb_hi=trial.suggest_float("range_pctb_hi", 0.75, 0.95),
+            range_max_adx=trial.suggest_float("range_max_adx", 15.0, 24.0),
+            min_abs_score=trial.suggest_float("min_abs_score", 0.25, 0.6),
+            cooldown_bars=trial.suggest_int("cooldown_bars", 0, 6),
         )
 
     def _suggest_backtest_cfg(self, trial) -> BacktestConfig:
         return BacktestConfig(
-            pt_mult=trial.suggest_float("pt_mult", 1.0, 4.0),
-            sl_mult=trial.suggest_float("sl_mult", 0.5, 2.5),
-            max_hold_bars=trial.suggest_int("max_hold_bars", 12, 120),
-            meta_threshold=trial.suggest_float("meta_threshold", 0.0, 0.0),  # no meta in this phase
+            trend_pt_atr=trial.suggest_float("trend_pt_atr", 2.0, 4.5),
+            trend_sl_atr=trial.suggest_float("trend_sl_atr", 1.0, 2.2),
+            trend_max_hold_bars=trial.suggest_int("trend_max_hold_bars", 36, 120),
+            trend_trail_atr=trial.suggest_float("trend_trail_atr", 1.2, 3.0),
+            range_pt_atr=trial.suggest_float("range_pt_atr", 1.0, 2.2),
+            range_sl_atr=trial.suggest_float("range_sl_atr", 0.7, 1.3),
+            range_max_hold_bars=trial.suggest_int("range_max_hold_bars", 12, 48),
+            meta_threshold=0.0,
             vol_target_ann=0.15,
         )
 
@@ -93,7 +108,9 @@ class OptunaRunner:
 
         prim = PrimaryRuleModel(prim_params).compute(feats)
         side = prim["primary_side"]
+        mode = prim["primary_mode"]
         close = self.df["close"].loc[feats.index]
+        atr_pct = feats["atr_pct"].reindex(close.index).ffill().bfill()
 
         events = cusum_events(close, h_mult=2.0)
         if len(events) < 50:
@@ -101,7 +118,7 @@ class OptunaRunner:
 
         # Approximate event-end (vertical barrier) for purging
         event_ends = get_vertical_barriers(
-            events, close, num_bars=bt_cfg.max_hold_bars
+            events, close, num_bars=bt_cfg.trend_max_hold_bars
         )
         event_ends = event_ends.reindex(feats.index).ffill()
 
@@ -117,6 +134,8 @@ class OptunaRunner:
                 close=close,
                 events=test_events,
                 side=side.reindex(close.index).fillna(0),
+                atr_pct=atr_pct,
+                mode=mode.reindex(close.index).fillna(0),
             )
             if res.stats.get("n_trades", 0) < 5:
                 continue
