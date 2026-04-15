@@ -13,12 +13,15 @@ FIB_LEVELS = np.array([0.236, 0.382, 0.5, 0.618, 0.786])
 def fibonacci_features(df: pd.DataFrame, atr_mult: float = 3.0) -> pd.DataFrame:
     """For each bar, compute distance (in ATR units) to the nearest Fib level
     of the latest completed swing, and which level is nearest.
+
+    Bars before any pivot gets a neutral default (large distance, level 0.5,
+    not in golden zone) so downstream dropna doesn't wipe the whole series.
     """
     pivots = zigzag_pivots(df, atr_mult=atr_mult)
     a = atr(df, 14).bfill()
 
-    nearest_dist = pd.Series(np.nan, index=df.index, name="fib_nearest_dist_atr")
-    nearest_lvl = pd.Series(np.nan, index=df.index, name="fib_nearest_level")
+    nearest_dist = pd.Series(999.0, index=df.index, name="fib_nearest_dist_atr")
+    nearest_lvl = pd.Series(0.5, index=df.index, name="fib_nearest_level")
     in_golden = pd.Series(0.0, index=df.index, name="fib_in_golden_zone")
 
     if len(pivots) < 2:

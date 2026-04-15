@@ -64,19 +64,25 @@ def backtest(
     feats = build_feature_matrix(df, fp).dropna()
     prim = PrimaryRuleModel(pp).compute(feats)
     side = prim["primary_side"]
+    mode = prim.get("primary_mode")
     events = cusum_events(df["close"].loc[feats.index])
 
     meta_proba = None
     if meta and Path(meta).exists():
         ml = MetaLabeler.load(meta)
-        proba = ml.predict_proba(feats.loc[events])
-        meta_proba = dict(zip(events, proba))
+        X_meta = feats.loc[events].copy()
+        X_meta["primary_score"] = prim["primary_score"].loc[events]
+        proba = ml.predict_proba(X_meta)
         import pandas as pd
-        meta_proba = pd.Series(meta_proba)
+        meta_proba = pd.Series(proba, index=events)
 
     res = EventBacktester(BacktestConfig()).run(
-        close=df["close"], events=events, side=side.reindex(df.index).fillna(0),
+        close=df["close"],
+        events=events,
+        side=side.reindex(df.index).fillna(0),
         meta_proba=meta_proba,
+        atr_pct=feats["atr_pct"].reindex(df.index),
+        mode=mode.reindex(df.index) if mode is not None else None,
     )
     table = Table(title=f"{symbol} backtest")
     table.add_column("metric")
@@ -151,13 +157,14 @@ def train_meta(
     events = cusum_events(close)
     events = events.intersection(side[side != 0].index)
 
-    tgt = get_daily_vol(close, span=100).reindex(close.index).ffill().bfill().clip(lower=5e-4)
+    # Use ATR-scaled barriers to match the backtest engine (regime-aware).
+    atr_pct = feats["atr_pct"].reindex(close.index).ffill().bfill().clip(lower=5e-4)
     labels = apply_triple_barrier(
         close=close,
         events=events,
-        target_vol=tgt,
+        target_vol=atr_pct,
         pt_mult=2.0,
-        sl_mult=1.0,
+        sl_mult=1.25,
         max_hold_bars=48,
         side=side.reindex(events),
     )
