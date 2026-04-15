@@ -42,8 +42,8 @@ class PrimaryParams:
     range_confirm_reversal: bool = True  # require a candle reversal
 
     # Shared
-    min_abs_score: float = 0.35
-    cooldown_bars: int = 3           # skip this many bars after each signal
+    min_abs_score: float = 0.45
+    cooldown_bars: int = 5           # skip this many bars after each signal
     # Kept for config backward-compat (unused now but optuna may set them)
     w_macd: float = 1.0
     w_stoch: float = 1.0
@@ -154,6 +154,7 @@ class PrimaryRuleModel:
         rsi14 = self._col(feats, "rsi_14")
         pct_b = self._col(feats, "bb_pct_b")
         bb_z = self._col(feats, "bb_z")
+        bb_width_pctl = self._col(feats, "bb_width_pctl", default=0.5)
         macd_slope = self._col(feats, "macd_hist_slope")
         close = self._col(feats, "close")
         bb_mid = self._col(feats, "bb_mid")
@@ -161,7 +162,14 @@ class PrimaryRuleModel:
         # Previous bar's stretch — we want a recovery FROM deeper
         pct_b_prev = pct_b.shift(1).fillna(0.5)
 
-        in_range_context = (is_range > 0) & (adx < p.range_max_adx)
+        # Only fade ranges that are actually compressed.  Wide-band "ranges"
+        # in high-vol environments are usually trend transitions or chop and
+        # routinely punish range-fades.
+        in_range_context = (
+            (is_range > 0)
+            & (adx < p.range_max_adx)
+            & (bb_width_pctl <= 0.55)
+        )
 
         long_setup = (
             in_range_context

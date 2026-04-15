@@ -171,7 +171,11 @@ def regime_score(
         ((adx <= adx_range_th + 4) | (trend_align.abs() <= 1 / 3))
         & (width_pctl <= 0.75)
     )
-    chop = (adx <= adx_range_th - 2) & (width_pctl <= 0.20) & (atr_pctl <= 0.30)
+    # Chop = either tight low-vol noise OR high-vol noise where bands are wide
+    # AND adx is weak. High-vol chop is what historically eats the range module.
+    chop_lo = (adx <= adx_range_th - 2) & (width_pctl <= 0.20) & (atr_pctl <= 0.30)
+    chop_hi = (adx <= adx_range_th + 2) & (atr_pctl >= 0.85) & (~align_persistent)
+    chop = chop_lo | chop_hi
 
     dir_sign = align_sign
     regime = pd.Series(0.0, index=adx.index)

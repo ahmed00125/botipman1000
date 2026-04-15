@@ -47,6 +47,8 @@ class BacktestConfig:
     max_hold_bars: int = 48
     meta_threshold: float = 0.55
     min_target_frac: float = 0.003    # floor TP to 0.3% so costs are covered
+    cost_adj_min_rr: float = 1.3      # required (pt - cost) / (sl + cost)
+    max_pt_atr: float = 6.0           # never widen TP beyond this multiple
     vol_target_ann: float = 0.15
     bars_per_year: int = 365 * 24 * 12   # ~5m bars
 
@@ -186,14 +188,26 @@ class EventBacktester:
                 max_hold = cfg.max_hold_bars
                 trail = None
 
-            # Ensure TP target clears round-trip cost
+            # Cost-adjusted R:R gate. After fees + slippage, the *effective*
+            # R:R has to remain favourable or there's no edge to harvest.
+            #     net_win  = pt_frac - rt_cost
+            #     net_loss = sl_frac + rt_cost
+            # We require net_win / net_loss >= cost_adj_min_rr (default 1.3).
             rt_cost = 2 * (fee + slip)
             pt_frac = pt_mult * atr_frac
-            if pt_frac < max(rt_cost * 2.0, cfg.min_target_frac):
-                # Widen barriers proportionally rather than silently skip,
-                # so we only take setups with genuine edge.
-                needed = max(rt_cost * 2.0, cfg.min_target_frac)
-                scale = needed / max(pt_frac, 1e-9)
+            sl_frac_pre = sl_mult * atr_frac
+            net_win = pt_frac - rt_cost
+            net_loss = sl_frac_pre + rt_cost
+            if net_win <= 0 or (net_win / max(net_loss, 1e-9)) < cfg.cost_adj_min_rr:
+                # Try widening the target proportionally so the trade clears
+                # the cost-adjusted R:R floor; if it still doesn't work, skip.
+                needed_pt = cfg.cost_adj_min_rr * net_loss + rt_cost
+                if needed_pt / atr_frac > cfg.max_pt_atr:
+                    continue
+                pt_mult = needed_pt / atr_frac
+                pt_frac = needed_pt
+            if pt_frac < cfg.min_target_frac:
+                scale = cfg.min_target_frac / max(pt_frac, 1e-9)
                 pt_mult *= scale
                 sl_mult *= scale
 
