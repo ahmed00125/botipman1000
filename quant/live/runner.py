@@ -58,14 +58,18 @@ class _BaseRunner:
             starting_equity=cfg.starting_equity,
         )
         self.feature_params, self.primary_params = self._load_params()
-        self.primary = PrimaryRuleModel(self.primary_params)
         self.meta: Optional[MetaLabeler] = None
         if cfg.meta_model_path and Path(cfg.meta_model_path).exists():
             try:
-                self.meta = MetaLabeler.load(cfg.meta_model_path)
+                self.meta, fp_saved = MetaLabeler.load(cfg.meta_model_path)
+                if fp_saved is not None:
+                    # Live features must match how the meta model was trained.
+                    self.feature_params = fp_saved
+                    logger.info("using feature params bundled in meta model")
                 logger.info(f"loaded meta model from {cfg.meta_model_path}")
             except Exception as exc:
                 logger.warning(f"meta model load failed: {exc}")
+        self.primary = PrimaryRuleModel(self.primary_params)
         self.drift: dict[str, DriftMonitor] = {}
         self.shadow_trades: list[dict] = []
         # Threading + status

@@ -8,11 +8,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 import pandas as pd
 from loguru import logger
+
+from quant.features.builder import FeatureParams
 
 
 @dataclass
@@ -90,18 +92,45 @@ class MetaLabeler:
         return out
 
     # ----------------------------------------------------------------- I/O
-    def save(self, path: str | Path) -> None:
+    def save(
+        self,
+        path: str | Path,
+        feature_params: FeatureParams | None = None,
+    ) -> None:
+        """Persist the trained model together with the FeatureParams used to
+        build its training features. Storing the feature params alongside the
+        model guarantees that inference-time feature construction matches the
+        training distribution, even if ``best_params.json`` is re-optimized
+        later.
+        """
         import joblib
 
-        joblib.dump({"model": self.model, "features": self.feature_names, "params": self.p}, path)
+        joblib.dump(
+            {
+                "model": self.model,
+                "features": self.feature_names,
+                "params": self.p,
+                "feature_params": feature_params,
+            },
+            path,
+        )
         logger.info(f"saved meta-model to {path}")
 
     @classmethod
-    def load(cls, path: str | Path) -> "MetaLabeler":
+    def load(
+        cls, path: str | Path
+    ) -> Tuple["MetaLabeler", FeatureParams | None]:
+        """Load a meta model. Returns ``(MetaLabeler, FeatureParams | None)``.
+
+        The second element is ``None`` for legacy models saved before feature
+        params were bundled; callers should fall back to
+        ``best_params.json`` / defaults in that case.
+        """
         import joblib
 
         obj = joblib.load(path)
         inst = cls(params=obj["params"])
         inst.model = obj["model"]
         inst.feature_names = obj["features"]
-        return inst
+        feature_params = obj.get("feature_params")
+        return inst, feature_params

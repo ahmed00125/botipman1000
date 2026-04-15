@@ -61,6 +61,15 @@ def backtest(
             if k in best:
                 setattr(pp, k, best[k])
 
+    # If a meta model is supplied, prefer the feature params stored inside it
+    # so the backtest feature matrix matches how the meta model was trained.
+    ml = None
+    if meta and Path(meta).exists():
+        ml, fp_saved = MetaLabeler.load(meta)
+        if fp_saved is not None:
+            fp = fp_saved
+            logger.info("using feature params bundled in meta model")
+
     feats = build_feature_matrix(df, fp).dropna()
     prim = PrimaryRuleModel(pp).compute(feats)
     side = prim["primary_side"]
@@ -68,8 +77,7 @@ def backtest(
     events = cusum_events(df["close"].loc[feats.index])
 
     meta_proba = None
-    if meta and Path(meta).exists():
-        ml = MetaLabeler.load(meta)
+    if ml is not None:
         X_meta = feats.loc[events].copy()
         X_meta["primary_score"] = prim["primary_score"].loc[events]
         proba = ml.predict_proba(X_meta)
@@ -176,7 +184,7 @@ def train_meta(
     ml = MetaLabeler()
     ml.fit(X, y)
     Path(out).parent.mkdir(parents=True, exist_ok=True)
-    ml.save(out)
+    ml.save(out, feature_params=fp)
     rprint(f"[green]saved meta model → {out}[/]")
 
 

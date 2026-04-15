@@ -135,16 +135,27 @@ def _job_backtest(job: dict, symbol: str, interval: str, days: int) -> dict:
             if k in best:
                 setattr(pp, k, best[k])
         job["log"].append("loaded best_params.json")
+
+    # Load the meta model up-front so its bundled feature params can override
+    # best_params.json before we build the feature matrix (prevents feature
+    # mismatch between train time and backtest time).
+    meta_path = ARTIFACTS_DIR / "meta_model.joblib"
+    ml = None
+    if meta_path.exists():
+        ml, fp_saved = MetaLabeler.load(meta_path)
+        if fp_saved is not None:
+            fp = fp_saved
+            job["log"].append("using feature params bundled in meta model")
+
     feats = build_feature_matrix(df, fp).dropna()
     prim = PrimaryRuleModel(pp).compute(feats)
     side = prim["primary_side"].reindex(df.index).fillna(0)
+    mode = prim["primary_mode"].reindex(df.index).fillna(0) if "primary_mode" in prim.columns else None
     events = cusum_events(df["close"].loc[feats.index])
     job["log"].append(f"{len(events)} CUSUM events")
 
-    meta_path = ARTIFACTS_DIR / "meta_model.joblib"
     meta_proba = None
-    if meta_path.exists():
-        ml = MetaLabeler.load(meta_path)
+    if ml is not None:
         X = feats.loc[events].copy()
         X["primary_score"] = prim["primary_score"].loc[events]
         proba = ml.predict_proba(X)
@@ -156,6 +167,8 @@ def _job_backtest(job: dict, symbol: str, interval: str, days: int) -> dict:
         events=events,
         side=side,
         meta_proba=meta_proba,
+        atr_pct=feats["atr_pct"].reindex(df.index),
+        mode=mode,
     )
     out_dir = ARTIFACTS_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -187,7 +200,7 @@ def _job_train_meta(job: dict, symbol: str, interval: str, days: int) -> dict:
     from quant.data.bars import cusum_events
     from quant.data.loader import BybitLoader
     from quant.features.builder import FeatureParams, build_feature_matrix
-    from quant.labeling.triple_barrier import apply_triple_barrier, get_daily_vol
+    from quant.labeling.triple_barrier import apply_triple_barrier
     from quant.models.meta import MetaLabeler
     from quant.models.primary import PrimaryParams, PrimaryRuleModel
 
@@ -208,13 +221,14 @@ def _job_train_meta(job: dict, symbol: str, interval: str, days: int) -> dict:
     events = cusum_events(close)
     events = events.intersection(side[side != 0].index)
     job["log"].append(f"{len(events)} events after primary filter")
-    tgt = get_daily_vol(close, span=100).reindex(close.index).ffill().bfill().clip(lower=5e-4)
+    # ATR-scaled barriers to stay consistent with the backtest engine.
+    atr_pct = feats["atr_pct"].reindex(close.index).ffill().bfill().clip(lower=5e-4)
     labels = apply_triple_barrier(
         close=close,
         events=events,
-        target_vol=tgt,
+        target_vol=atr_pct,
         pt_mult=2.0,
-        sl_mult=1.0,
+        sl_mult=1.25,
         max_hold_bars=48,
         side=side.reindex(events),
     )
@@ -226,7 +240,7 @@ def _job_train_meta(job: dict, symbol: str, interval: str, days: int) -> dict:
     ml.fit(X, y)
     out = ARTIFACTS_DIR / "meta_model.joblib"
     out.parent.mkdir(parents=True, exist_ok=True)
-    ml.save(out)
+    ml.save(out, feature_params=fp)
     job["log"].append(f"saved → {out}")
     return {"samples": int(len(X)), "positives": int(y.sum())}
 

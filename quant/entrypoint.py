@@ -100,13 +100,19 @@ def _run_backtest() -> int:
             if k in best:
                 setattr(pp, k, best[k])
 
+    ml = None
+    if meta_path.exists():
+        ml, fp_saved = MetaLabeler.load(meta_path)
+        if fp_saved is not None:
+            fp = fp_saved
+            logger.info("using feature params bundled in meta model")
+
     feats = build_feature_matrix(df, fp).dropna()
     prim = PrimaryRuleModel(pp).compute(feats)
     side = prim["primary_side"].reindex(df.index).fillna(0)
     events = cusum_events(df["close"].loc[feats.index])
     meta_proba = None
-    if meta_path.exists():
-        ml = MetaLabeler.load(meta_path)
+    if ml is not None:
         X = feats.loc[events].copy()
         X["primary_score"] = prim["primary_score"].loc[events]
         proba = ml.predict_proba(X)
