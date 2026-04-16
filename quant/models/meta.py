@@ -44,6 +44,29 @@ class MetaLabeler:
                 "lightgbm required for meta-labeling. pip install lightgbm"
             ) from exc
 
+        # Guard against empty / degenerate training sets. Without this,
+        # LightGBM + sklearn's compute_class_weight(class_weight="balanced")
+        # crashes with a cryptic "IndexError: arrays used as indices must be
+        # of integer (or boolean) type" when y has zero samples, because
+        # np.unique on an empty array returns an empty float64 array.
+        y_arr = np.asarray(y).astype(int, copy=False)
+        if len(X) == 0 or len(y_arr) == 0:
+            raise ValueError(
+                "MetaLabeler.fit: no training samples available. "
+                "The primary model produced no events to label — try widening "
+                "the date range, loosening primary-signal thresholds, or "
+                "lowering CUSUM filter sensitivity."
+            )
+        unique_classes = np.unique(y_arr)
+        if unique_classes.size < 2:
+            only = int(unique_classes[0]) if unique_classes.size else None
+            raise ValueError(
+                f"MetaLabeler.fit: training labels contain only one class "
+                f"({only!r}); cannot fit a binary classifier. Collect more "
+                f"data or adjust triple-barrier parameters so both TP and "
+                f"SL outcomes are represented."
+            )
+
         self.feature_names = list(X.columns)
         self.model = lgb.LGBMClassifier(
             num_leaves=self.p.num_leaves,
@@ -64,7 +87,7 @@ class MetaLabeler:
             fit_kwargs["sample_weight"] = sample_weight.loc[X.index].values
         # Pass DataFrame so LightGBM records feature names (prevents mismatch
         # warnings at predict time).
-        self.model.fit(X, y.values, **fit_kwargs)
+        self.model.fit(X, y_arr, **fit_kwargs)
 
     # --------------------------------------------------------------- predict
     def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
